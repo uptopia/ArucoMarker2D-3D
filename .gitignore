@@ -1,0 +1,9 @@
+.vscode
+
+*.jpg
+*.png
+*build
+*devel
+
+CATKIN_IGNORE
+
