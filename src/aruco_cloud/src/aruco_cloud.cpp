@@ -36,6 +36,15 @@
 #include <iostream>
 #include <algorithm>
 
+#include <Eigen/Core>
+// #include <pcl/common/transform.h>
+// #include <pcl/transform.h>
+#include <pcl/common/common.h>
+// #include <tf2/LinearMath/Transform.h>
+#include <tf2/LinearMath/Matrix3x3.h>
+
+#include <tf/tf.h>
+
 using namespace std;
 
 typedef pcl::PointXYZRGB PointTRGB;
@@ -176,7 +185,25 @@ void aruco_corners_cb(const std_msgs::Float64MultiArray::ConstPtr& corners_msg)
 //         cout << "organized_cloud_ori saved: DONE! \n";
 //     }
 // }
-
+void CalculatePCA(pcl::PointCloud<PointTRGB>::Ptr & cloud, Eigen::Matrix3f eigenVectorsPCA)
+{
+    Eigen::Vector4f pcaCentroid;
+	pcl::compute3DCentroid(*cloud, pcaCentroid);
+	Eigen::Matrix3f covariance;
+	pcl::computeCovarianceMatrixNormalized(*cloud, pcaCentroid, covariance);
+	Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigen_solver(covariance, Eigen::ComputeEigenvectors);
+	// Eigen::Matrix3f eigenVectorsPCA = eigen_solver.eigenvectors();
+    eigenVectorsPCA = eigen_solver.eigenvectors();
+	Eigen::Vector3f eigenValuesPCA = eigen_solver.eigenvalues();
+    
+	eigenVectorsPCA.col(2) = eigenVectorsPCA.col(0).cross(eigenVectorsPCA.col(1)); //校正主方向间垂直
+	eigenVectorsPCA.col(0) = eigenVectorsPCA.col(1).cross(eigenVectorsPCA.col(2));
+	eigenVectorsPCA.col(1) = eigenVectorsPCA.col(2).cross(eigenVectorsPCA.col(0));
+ 
+	// std::cout << "特征值va(3x1):\n" << eigenValuesPCA << std::endl;
+	// std::cout << "特征向量ve(3x3):\n" << eigenVectorsPCA << std::endl;
+	// std::cout << "质心点(4x1):\n" << pcaCentroid << std::endl;
+}
 
 void aruco_cloud_cb(const sensor_msgs::PointCloud2ConstPtr& organized_cloud_msg)
 {
@@ -334,6 +361,23 @@ void aruco_cloud_cb(const sensor_msgs::PointCloud2ConstPtr& organized_cloud_msg)
             // transform.setRotation( tf::Quaternion(0, 0, 0, 1));             
             // br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "camera_depth_optical_frame", marker_coord_name));//camera_depth_frame
             
+            
+            Eigen::Matrix3f vect;            
+            CalculatePCA(marker_all[n].marker_cloud, vect);
+            std::cout << "特征向量ve(3x3):\n" << vect << std::endl;
+            tf2::Quaternion quat;
+            tf2::Matrix3x3 mm;
+            mm.setValue(vect(0),vect(1),vect(2),vect(3),vect(4),vect(5),vect(6),vect(7),vect(8));
+            // mm.getRotation(quat);
+            double r, p, y;
+            
+            // mm.to
+            mm.getRPY(r,p,y); //0,1
+            cout<<"rpy:"<<r<<", "<<p<<", "<<y<<endl;
+            // r+=3.14159;
+            // quat.normalize();
+            // cout<<"quat:"<<quat.x()<<", "<<quat.y()<<", "<<quat.z()<<", "<<quat.w()<<endl;
+
             ////ROS tf2
             static tf2_ros::StaticTransformBroadcaster sbr;
             geometry_msgs::TransformStamped transform;
@@ -344,9 +388,12 @@ void aruco_cloud_cb(const sensor_msgs::PointCloud2ConstPtr& organized_cloud_msg)
             transform.transform.translation.y = marker_all[n].center_point.y;
             transform.transform.translation.z = marker_all[n].center_point.z;
 
-            tf2::Quaternion quat;
-            quat.setRPY(0.0, 0.0, 0.0); //roll, pitch, yaw (around X, Y, Z)
+            // tf2::Quaternion quat;
+            // quat.setRPY(0.0, 0.0, 0.0); //roll, pitch, yaw (around X, Y, Z)
             //quat.setRPY(tf::createQuaternionFromRPY (-1 * thetax, -1 * thetay, -1 * thetaz));
+            cout<<"rpy:"<<r<<", "<<p<<", "<<y<<endl;
+            cout<<"quat:"<<quat.x()<<", "<<quat.y()<<", "<<quat.z()<<", "<<quat.w()<<endl;
+            quat.setRPY(r,p,y);            
             transform.transform.rotation.x = quat.x();
             transform.transform.rotation.y = quat.y();
             transform.transform.rotation.z = quat.z();
